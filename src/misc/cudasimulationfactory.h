@@ -10,14 +10,18 @@
 
 namespace LibGeoDecomp {
 
+/**
+ * As its name implies this class helps with instantiating
+ * CUDASimulators and lists all drivable/optimizable parameters.
+ */
 template<typename CELL>
-class CudaSimulationFactory : public SimulationFactory<CELL>
+class CUDASimulationFactory : public SimulationFactory<CELL>
 {
 public:
     using SimulationFactory<CELL>::addSteerers;
     using SimulationFactory<CELL>::addWriters;
 
-    CudaSimulationFactory<CELL>(boost::shared_ptr<ClonableInitializer<CELL> > initializer) :
+    CUDASimulationFactory<CELL>(boost::shared_ptr<ClonableInitializer<CELL> > initializer) :
         SimulationFactory<CELL>(initializer)
     {
         SimulationFactory<CELL>::parameterSet.addParameter("BlockDimX", 1, 128);
@@ -27,27 +31,25 @@ public:
 
     virtual double operator()(const SimulationParameters& params)
     {
-        LOG(Logger::DBG, "SimulationFactory::operator(params)");
         boost::shared_ptr<ClonableInitializer<CELL> > init(SimulationFactory<CELL>::initializer->clone());
-        Simulator<CELL> *sim = buildSimulator(init, params);
-        LOG(Logger::DBG, "sim get buildSimulator(initializer->clone(), params)")
+        boost::shared_ptr<Simulator<CELL> > sim(buildSimulator(init, params));
         Chronometer chrono;
 
         {
             TimeCompute t(&chrono);
-            LOG(Logger::DBG,"next step is sim->run()")
             try {
                 sim->run();
             } catch(const std::runtime_error& error){
-                LOG(Logger::INFO,"runtime error detcted")
-                delete sim;
-                return DBL_MAX *-1.0;
+                return std::numeric_limits<double>::min();
             }
         }
 
-        LOG(Logger::DBG,"now deleting sim")
-        delete sim;
         return chrono.interval<TimeCompute>() * -1.0;
+    }
+
+    std::string name() const
+    {
+        return "CUDASimulator";
     }
 
 protected:
@@ -56,7 +58,7 @@ protected:
         const SimulationParameters& params) const
     {
         Coord<3> blockSize(params["BlockDimX"], params["BlockDimY"], params["BlockDimZ"]);
-        CudaSimulator<CELL> *sim = new CudaSimulator<CELL>(initializer->clone(), blockSize);
+        CUDASimulator<CELL> *sim = new CUDASimulator<CELL>(initializer->clone(), blockSize);
 
         addWriters(sim);
         addSteerers(sim);

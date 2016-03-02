@@ -7,7 +7,6 @@
 #include <libgeodecomp/storage/grid.h>
 
 #include <bitset>
-#include <boost/multi_array.hpp>
 #include <boost/shared_ptr.hpp>
 #include <sstream>
 #include <stdexcept>
@@ -28,8 +27,8 @@ public:
     const static int DIM = DIMENSIONS;
 
     typedef std::vector<Coord<DIM> > CoordVector;
-    typedef Grid<CoordVector, typename Topologies::Cube<DIM>::Topology> GridType;
-    typedef boost::shared_ptr<GridType> Cache;
+    typedef Grid<CoordVector, typename Topologies::Cube<DIM>::Topology> CacheType;
+    typedef boost::shared_ptr<CacheType> Cache;
     typedef typename Topologies::Cube<DIM>::Topology Topology;
 
     class Square
@@ -279,7 +278,8 @@ public:
         const Coord<DIM>& origin = Coord<DIM>(),
         const Coord<DIM>& dimensions = Coord<DIM>(),
         const long& offset = 0,
-        const std::vector<std::size_t>& weights = std::vector<std::size_t>(2)) :
+        const std::vector<std::size_t>& weights = std::vector<std::size_t>(2),
+        const boost::shared_ptr<Adjacency>& /* unused: adjacency */ = boost::make_shared<RegionBasedAdjacency>()) :
         SpaceFillingCurve<DIM>(offset, weights),
         origin(origin),
         dimensions(dimensions)

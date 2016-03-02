@@ -45,25 +45,25 @@ public:
 
 #ifdef LIBGEODECOMP_WITH_CPP14
         unsigned maxSteps = initializerProxy->maxSteps();
-        double oldFitness = DBL_MIN;
+        double oldFitness = std::numeric_limits<double>::min();
         double aktFitness = 0.0;
+
         for (unsigned i = 10; i < maxSteps; i *= 2) {
-            LOG(Logger::DBG, "setMaxSteps("<<i<<")")
+            LOG(Logger::DBG, "setMaxSteps("<<i<<")");
             initializerProxy->setMaxSteps(i);
             LOG(Logger::DBG,"i: "<< i << " maxSteps(): "
-                << initializerProxy->maxSteps() << " getMaxSteps(): "
-                << initializerProxy->getMaxSteps())
-            TS_ASSERT_EQUALS(i,initializerProxy->maxSteps());
-            TS_ASSERT_EQUALS(i,initializerProxy->getMaxSteps());
+                << initializerProxy->maxSteps());
+            TS_ASSERT_EQUALS(i, initializerProxy->maxSteps());
             aktFitness = fab->operator()(fab->parameterSet);
-            LOG(Logger::DBG, "Fitness: " << aktFitness)
+            LOG(Logger::DBG, "Fitness: " << aktFitness);
             TS_ASSERT(oldFitness > aktFitness);
             oldFitness = aktFitness;
         }
+
         LOG(Logger::DBG, "getInitializer()->maxSteps(): "
-                        << initializerProxy->getInitializer()->maxSteps()
-                        << " \"initial\" maxSteps: " << maxSteps)
-        TS_ASSERT_EQUALS(initializerProxy->getInitializer()->maxSteps(), maxSteps);
+            << initializerProxy->proxyObj->maxSteps()
+            << " \"initial\" maxSteps: " << maxSteps);
+        TS_ASSERT_EQUALS(initializerProxy->proxyObj->maxSteps(), maxSteps);
 #endif
     }
 

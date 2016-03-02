@@ -6,6 +6,10 @@
 
 namespace LibGeoDecomp {
 
+/**
+ * This test model is used to verify that our simulation factories are
+ * correctly instantiating Simulators.
+ */
 class SimFabTestCell
 {
 public:
@@ -34,7 +38,7 @@ public:
 
     template<typename COORD_MAP>
     __device__
-    void updateCuda(const COORD_MAP& neighborhood, unsigned nanoStep)
+    void updateCUDA(const COORD_MAP& neighborhood, unsigned nanoStep)
     {
         temp = (neighborhood[FixedCoord< 0,  0, -1>()].temp +
                 neighborhood[FixedCoord< 0, -1,  0>()].temp +
@@ -47,6 +51,10 @@ public:
     double temp;
 };
 
+/**
+ * The SimFabTestInitializer is only used in conjunction with
+ * SimFabTestCell and exists solely for for testing purposes.
+ */
 class SimFabTestInitializer : public SimpleInitializer<SimFabTestCell>
 {
 public:

@@ -9,48 +9,42 @@
 
 #ifdef LIBGEODECOMP_WITH_CPP14
 
-/**
- * The VarStepInitializerProxy is a class to rig the max Steps.
- * It provide the possibility to change the max steps of an exiting
- * intinializer.
- */
 namespace LibGeoDecomp {
 
+/**
+ * This class wraps another initializer but overrides its max steps
+ * setting. This way a simulation can be run piece-wise.
+ */
 template<typename CELL>
 class VarStepInitializerProxy : public ClonableInitializer<CELL>
 {
 public:
+    friend class SimulationFactoryWithoutCudaTest;
+    friend class SimulationFactoryWithCudaTest;
+
     typedef typename Initializer<CELL>::Topology Topology;
     const static int DIM = Topology::DIM;
 
-    VarStepInitializerProxy(Initializer<CELL> *proxyObj):
+    VarStepInitializerProxy(Initializer<CELL> *proxyObj) :
         ClonableInitializer<CELL>(),
         proxyObj(boost::shared_ptr<Initializer<CELL> >(proxyObj)),
         newMaxSteps(proxyObj->maxSteps())
     {}
 
     /**
+     * We need this reset the number of steps in order to let
+     * simulators run unto completion.
+     */
+    void resetMaxSteps()
+    {
+        newMaxSteps = proxyObj->maxSteps() - proxyObj->startStep();
+    }
+
+    /**
      * change the maxSteps to a new value
      */
     void setMaxSteps(unsigned steps) {
         newMaxSteps = steps;
-    }
-
-    /**
-     * This function returns the remaining steps to be simulated
-     */
-    unsigned getMaxSteps() const
-    {
-        return newMaxSteps;
-    }
-
-    /**
-     * This function returns a shared_ptr to the original Initializer
-     */
-    // fixme: drop this
-    boost::shared_ptr<Initializer<CELL> > getInitializer()
-    {
-        return proxyObj;
     }
 
     //------------------- inherited functions from Initializer ------------------

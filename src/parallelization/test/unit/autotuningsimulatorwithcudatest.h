@@ -20,7 +20,7 @@ namespace LibGeoDecomp {
  * without CUDA. This duplication is acceptable as the same code may
  * behave differently in the presence of CUDA.
  */
-class AutotuningSimulatorWithCudaTest : public CxxTest::TestSuite
+class AutotuningSimulatorWithCUDATest : public CxxTest::TestSuite
 {
 public:
     void setUp()
@@ -91,7 +91,7 @@ public:
 #endif
     }
 
-    void testAddOwnSimulationsForCudaSim()
+    void testAddOwnSimulationsForCUDASim()
     {
         // fixme
         return;
@@ -101,19 +101,13 @@ public:
         AutoTuningSimulator<SimFabTestCell, PatternOptimizer> ats(
             new SimFabTestInitializer(dim, maxSteps));
         ats.simulations.clear();
-        SimulationParameters params;
-        params.addParameter("BlockDimX", 1, 128);
-        params.addParameter("BlockDimY", 1, 8);
-        params.addParameter("BlockDimZ", 1, 8);
-        ats.addNewSimulation("1.CudaSimulator",
-            "CudaSimulation");
-        ats.setParameters(params, "1.CudaSimulator");
+        ats.addSimulation("1.CUDASimulator", CUDASimulationFactory<SimFabTestCell>(ats.varStepInitializer));
         ats.run();
 #endif
 #endif
     }
 
-    void testManuallyParamterizedCudaSim()
+    void testManuallyParamterizedCUDASim()
     {
         // fixme
         return;
@@ -127,12 +121,12 @@ public:
         params.addParameter("BlockDimY", 1, 6);
         params.addParameter("BlockDimZ", 1, 6);
 
-        ats.setParameters(params, "CudaSimulation");
+        ats.getSimulation("CUDASimulator")->parameters = params;
         ats.run();
 #endif
     }
 
-    void testInvalidArgumentsForCudaSim()
+    void testInvalidArgumentsForCUDASim()
     {
         // fixme
         return;
@@ -141,17 +135,8 @@ public:
 #ifdef LIBGEODECOMP_WITH_CPP14
         AutoTuningSimulator<SimFabTestCell, PatternOptimizer> ats(
             new SimFabTestInitializer(dim, maxSteps));
-        // This test don't test SimulationParameters!!!!
-        SimulationParameters params;
-        params.addParameter("BlockDimX", 1, 64);
-        params.addParameter("BlockDimY", 1, 6);
-        params.addParameter("BlockDimZ", 1, 6);
-        // A JuliaSimulator is not valid
-        TS_ASSERT_THROWS(ats.addNewSimulation("1.CudaSimulator",
-            "JuliaSimulation"), std::invalid_argument);
-        TS_ASSERT_THROWS(ats.setParameters(params, "1.CudaSimulator"),
-            std::invalid_argument);
-        TS_ASSERT_THROWS(ats.setParameters(params, "NoSimulator"), std::invalid_argument);
+        TS_ASSERT_THROWS(ats.getSimulation("1.CUDASimulator"), std::invalid_argument);
+        TS_ASSERT_THROWS(ats.getSimulation("NoSimulator"), std::invalid_argument);
 #endif
 #endif
     }
@@ -165,9 +150,10 @@ public:
         AutoTuningSimulator<SimFabTestCell, PatternOptimizer> ats(
             new SimFabTestInitializer(dim, maxSteps));
         ats.simulations.clear();
-        ats.addNewSimulation(
-            "SerialSimulation",
-            "SerialSimulation");
+        ats.addSimulation(
+            "SerialSimulator",
+            SerialSimulationFactory<SimFabTestCell>(ats.varStepInitializer));
+
         std::ostringstream buf;
         ats.addWriter(static_cast<Writer<SimFabTestCell> *>(new TracingWriter<SimFabTestCell>(1, 100, 0, buf)));
         ats.run();

@@ -116,32 +116,6 @@ public:
 
     static const int AGGREGATED_MEMBER_SIZE =  LibFlatArray::aggregated_member_size<ELEMENT_TYPE>::VALUE;
 
-    explicit UnstructuredSoAGrid(
-        const Coord<DIM>& dim = Coord<DIM>(),
-        const ELEMENT_TYPE& defaultElement = ELEMENT_TYPE(),
-        const ELEMENT_TYPE& edgeElement = ELEMENT_TYPE(),
-        const Coord<DIM>& topologicalDimensionIsIrrelevantHere = Coord<DIM>()) :
-        elements(dim.x(), 1, 1),
-        edgeElement(edgeElement),
-        dimension(dim)
-    {
-        // init matrices
-        for (std::size_t i = 0; i < MATRICES; ++i) {
-            matrices[i] =
-                SellCSigmaSparseMatrixContainer<VALUE_TYPE,C,SIGMA>(dim.x());
-        }
-
-        // the grid size should be padded to the total number of chunks
-        // -> no border cases for vectorization
-        const std::size_t rowsPadded = ((dim.x() - 1) / C + 1) * C;
-        elements.resize(rowsPadded, 1, 1);
-
-        // init soa_grid
-        for (std::size_t i = 0; i < rowsPadded; ++i) {
-            set(i, defaultElement);
-        }
-    }
-
     explicit
     UnstructuredSoAGrid(const CoordBox<DIM> box,
                         const ELEMENT_TYPE& defaultElement = ELEMENT_TYPE(),

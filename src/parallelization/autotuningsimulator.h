@@ -19,6 +19,10 @@ namespace LibGeoDecomp {
 
 namespace AutoTuningSimulatorHelpers {
 
+/**
+ * A helper flass which encapsulates a simulation factory and the
+ * associated fitness values.
+ */
 template<typename CELL_TYPE>
 class Simulation{
 public:
@@ -28,7 +32,7 @@ public:
         const std::string& name,
         SimFactoryPtr simFactory,
         SimulationParameters param,
-        double fit = DBL_MAX):
+        double fit = std::numeric_limits<double>::max()):
         simulationType(name),
         simulationFactory(simFactory),
         parameters(param),
@@ -53,8 +57,8 @@ template<typename CELL_TYPE, typename OPTIMIZER_TYPE>
 class AutoTuningSimulator
 {
 public:
-    friend class AutotuningSimulatorWithoutCudaTest;
-    friend class AutotuningSimulatorWithCudaTest;
+    friend class AutotuningSimulatorWithoutCUDATest;
+    friend class AutotuningSimulatorWithCUDATest;
 
     typedef AutoTuningSimulatorHelpers::Simulation<CELL_TYPE>  Simulation;
     typedef boost::shared_ptr<SimulationFactory<CELL_TYPE> > SimFactoryPtr;
@@ -78,9 +82,22 @@ private:
     std::vector<boost::shared_ptr<Writer<CELL_TYPE> > > writers;
     std::vector<boost::shared_ptr<Steerer<CELL_TYPE> > > steerers;
 
-    // fixme: why pass a string here and not a SimFactory instance? also: parameters and SimFactory should be added simultaneously
-    void addNewSimulation(const std::string& name, const std::string& typeOfSimulation);
-    void setParameters(const SimulationParameters& params, const std::string& name);
+    template<typename FACTORY_TYPE>
+    void addSimulation(const std::string& name, const FACTORY_TYPE& factory)
+    {
+        SimFactoryPtr simFactoryPtr(new FACTORY_TYPE(factory));
+        SimulationPtr simulationPtr(new Simulation(
+                                        name,
+                                        simFactoryPtr,
+                                        simFactoryPtr->parameters()));
+        simulations[name] = simulationPtr;
+    }
+
+    template<typename FACTORY_TYPE>
+    void addSimulation(const FACTORY_TYPE& factory)
+    {
+        addSimulation(factory.name(), factory);
+    }
 
     std::string getBestSim();
 
@@ -107,15 +124,14 @@ AutoTuningSimulator<CELL_TYPE, OPTIMIZER_TYPE>::AutoTuningSimulator(Initializer<
     optimizationSteps(optimizationSteps),
     varStepInitializer(new VarStepInitializerProxy<CELL_TYPE>(initializer))
 {
-    addNewSimulation("SerialSimulation", "SerialSimulation");
-
+    addSimulation(SerialSimulationFactory<CELL_TYPE>(varStepInitializer));
 #ifdef LIBGEODECOMP_WITH_THREADS
-    addNewSimulation("CacheBlockingSimulation", "CacheBlockingSimulation");
+    addSimulation(CacheBlockingSimulationFactory<CELL_TYPE>(varStepInitializer));
 #endif
 
 #ifdef __CUDACC__
 #ifdef LIBGEODECOMP_WITH_CUDA
-    addNewSimulation("CudaSimulation", "CudaSimulation");
+    addSimulation(CUDASimulationFactory<CELL_TYPE>(varStepInitializer));
 #endif
 #endif
 }
@@ -137,57 +153,6 @@ template<typename CELL_TYPE,typename OPTIMIZER_TYPE>
 void AutoTuningSimulator<CELL_TYPE, OPTIMIZER_TYPE>::addSteerer(const Steerer<CELL_TYPE> *steerer)
 {
     steerers.push_back(boost::shared_ptr<Steerer<CELL_TYPE> >(steerer));
-}
-
-template<typename CELL_TYPE,typename OPTIMIZER_TYPE>
-void AutoTuningSimulator<CELL_TYPE, OPTIMIZER_TYPE>::addNewSimulation(
-    const std::string& name,
-    const std::string& typeOfSimulation)
-{
-    // fixme: if we already have specialized factories, we should not have this additional manual type switch
-    if (typeOfSimulation == "SerialSimulation") {
-        SimFactoryPtr simFac_p(new SerialSimulationFactory<CELL_TYPE>(varStepInitializer));
-        SimulationPtr sim_p(new Simulation(
-                typeOfSimulation,
-                simFac_p,
-                simFac_p->parameters()));
-        simulations[name] = sim_p;
-        return;
-    }
-
-#ifdef LIBGEODECOMP_WITH_THREADS
-    if (typeOfSimulation == "CacheBlockingSimulation") {
-        SimFactoryPtr simFac_p(new CacheBlockingSimulationFactory<CELL_TYPE>(varStepInitializer));
-        SimulationPtr sim_p(new Simulation(
-                typeOfSimulation,
-                simFac_p,
-                simFac_p->parameters()));
-        simulations[name] = sim_p;
-        return;
-    }
-#endif
-
-#ifdef __CUDACC__
-#ifdef LIBGEODECOMP_WITH_CUDA
-     if (typeOfSimulation == "CudaSimulation") {
-        SimFactoryPtr simFac_p(new CudaSimulationFactory<CELL_TYPE>(varStepInitializer));
-        SimulationPtr sim_p(new Simulation(
-                typeOfSimulation,
-                simFac_p,
-                simFac_p->parameters()));
-        simulations[name] = sim_p;
-        return;
-     }
-#endif
-#endif
-
-    throw std::invalid_argument("SimulationFactory::addNewSimulation(): unknown simulator type");
-}
-
-template<typename CELL_TYPE,typename OPTIMIZER_TYPE>
-void AutoTuningSimulator<CELL_TYPE, OPTIMIZER_TYPE>::setParameters(const SimulationParameters& params, const std::string& name)
-{
-    getSimulation(name)->parameters = params;
 }
 
 template<typename CELL_TYPE,typename OPTIMIZER_TYPE>
@@ -213,25 +178,25 @@ void AutoTuningSimulator<CELL_TYPE, OPTIMIZER_TYPE>::run()
 template<typename CELL_TYPE,typename OPTIMIZER_TYPE>
 std::string AutoTuningSimulator<CELL_TYPE, OPTIMIZER_TYPE>::getBestSim()
 {
-std::string bestSimulation;
-double tmpFitness = -1 * DBL_MAX;
-typedef typename std::map<const std::string, SimulationPtr>::iterator IterType;
-for (IterType iter = simulations.begin(); iter != simulations.end(); iter++) {
-    if (iter->second->fitness > tmpFitness) {
-        tmpFitness = iter->second->fitness;
-        bestSimulation = iter->first;
+    std::string bestSimulation;
+    double tmpFitness = std::numeric_limits<double>::min();
+    typedef typename std::map<const std::string, SimulationPtr>::iterator IterType;
+
+    for (IterType iter = simulations.begin(); iter != simulations.end(); iter++) {
+        if (iter->second->fitness > tmpFitness) {
+            tmpFitness = iter->second->fitness;
+            bestSimulation = iter->first;
+        }
     }
-}
-LOG(Logger::DBG, "bestSimulation: " << bestSimulation)
-return bestSimulation;
+
+    LOG(Logger::DBG, "bestSimulation: " << bestSimulation);
+    return bestSimulation;
 }
 
 template<typename CELL_TYPE,typename OPTIMIZER_TYPE>
 void AutoTuningSimulator<CELL_TYPE, OPTIMIZER_TYPE>::runToCompletion(const std::string& optimizerName)
 {
-    // fixme: rework this
-    boost::shared_ptr<Initializer<CELL_TYPE> > originalInitializer = varStepInitializer->getInitializer();
-    varStepInitializer->setMaxSteps(originalInitializer->maxSteps());
+    varStepInitializer->resetMaxSteps();
     (*getSimulation(optimizerName)->simulationFactory)(simulations[optimizerName]->parameters);
 }
 
@@ -249,7 +214,8 @@ unsigned AutoTuningSimulator<CELL_TYPE, OPTIMIZER_TYPE>::normalizeSteps(double g
     unsigned oldSteps = startStepNum;
     varStepInitializer->setMaxSteps(1);
     double variance = (*simulation->simulationFactory)(factory->parameters());
-    double fitness = DBL_MAX;
+    double fitness = std::numeric_limits<double>::max();
+
     do {
         varStepInitializer->setMaxSteps(steps);
         fitness = (*factory)(simulation->parameters);

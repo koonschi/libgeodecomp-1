@@ -28,17 +28,18 @@ template<
 class UnstructuredSoANeighborhood
 {
 public:
+    static const int ARITY = C;
+
     using Grid = UnstructuredSoAGrid<CELL, MATRICES, VALUE_TYPE, C, SIGMA>;
-    using IteratorPair = std::pair<const unsigned *, const VALUE_TYPE *>;
+    using IteratorPair = std::pair<const int*, const VALUE_TYPE*>;
     using SoAAccessor = LibFlatArray::soa_accessor<CELL, DIM_X, DIM_Y, DIM_Z, INDEX>;
 
     /**
      * This iterator returns objects/values needed to update
-     * the current chunk. Iterator consists of a pair: indices pointer
-     * and matrix values pointer.
+     * the current chunk. Iterator consists of a pair: indices reference
+     * and matrix values reference.
      */
-    class Iterator : public std::iterator<std::forward_iterator_tag,
-                                          const IteratorPair>
+    class Iterator : public std::iterator<std::forward_iterator_tag, const IteratorPair>
     {
     public:
         using Matrix = SellCSigmaSparseMatrixContainer<VALUE_TYPE, C, SIGMA>;
@@ -67,14 +68,21 @@ public:
             return !(*this == other);
         }
 
-        inline
-        const IteratorPair operator*() const
+        inline const Iterator& operator*() const
         {
-            // load indices and matrix values pointers
-            const VALUE_TYPE *weights = matrix.valuesVec().data() + offset;
-            const unsigned *indices =
-                reinterpret_cast<const unsigned *>(matrix.columnVec().data() + offset);
-            return std::make_pair(indices, weights);
+            return *this;
+        }
+
+        inline
+        const int *first() const
+        {
+            return &matrix.columnVec()[offset];
+        }
+
+        inline
+        const VALUE_TYPE *second() const
+        {
+            return &matrix.valuesVec()[offset];
         }
 
     private:
@@ -86,6 +94,7 @@ public:
     UnstructuredSoANeighborhood(const SoAAccessor& acc, const Grid& grid, long startX) :
         grid(grid),
         currentChunk(startX / C),
+        currentMatrixID(0),
         accessor(acc)
     {}
 
@@ -94,14 +103,6 @@ public:
     {
         ++currentChunk;
         return *this;
-    }
-
-    inline
-    UnstructuredSoANeighborhood operator++(int)
-    {
-        UnstructuredSoANeighborhood tmp(*this);
-        operator++();
-        return tmp;
     }
 
     inline
@@ -127,7 +128,6 @@ public:
     UnstructuredSoANeighborhood& weights(std::size_t matrixID)
     {
         currentMatrixID = matrixID;
-
         return *this;
     }
 
@@ -151,6 +151,11 @@ public:
         return &accessor;
     }
 
+    CELL operator[](int index) const
+    {
+        return grid[index];
+    }
+
 private:
     const Grid& grid;            /**< old grid */
     int currentChunk;            /**< current chunk */
@@ -169,18 +174,37 @@ public:
     using SoAAccessor = LibFlatArray::soa_accessor<CELL, DIM_X, DIM_Y, DIM_Z, INDEX>;
 
     inline explicit
-    UnstructuredSoANeighborhoodNew(SoAAccessor& acc) :
+    UnstructuredSoANeighborhoodNew(SoAAccessor *acc) :
         accessor(acc)
     {}
 
     inline
     SoAAccessor *operator->() const
     {
-        return &accessor;
+        return accessor;
+    }
+
+    inline
+    UnstructuredSoANeighborhoodNew& operator++()
+    {
+        ++(*accessor);
+        return *this;
+    }
+
+    inline
+    int index() const
+    {
+        return accessor->index;
+    }
+
+    inline
+    void operator<<(const CELL& cell)
+    {
+        (*accessor) << cell;
     }
 
 private:
-    SoAAccessor& accessor;      /**< accessor to new grid */
+    SoAAccessor *accessor;      /**< accessor to new grid */
 };
 
 /**

@@ -322,14 +322,14 @@ class RegionExpandWithAdjacency : public CPUBenchmark
 {
 public:
     explicit RegionExpandWithAdjacency(
-        std::map<int, ConvexPolytope<Coord<2> > > cells) :
+        std::map<int, ConvexPolytope<FloatCoord<2> > > cells) :
         rawCells(cells)
     {}
 
     std::string family()
     {
         std::stringstream buf;
-        // we don't name this RegionExpandWithAdjacency to users can
+        // we don't name this RegionExpandWithAdjacency so users can
         // still selectively run RegionExpand sans this test.
         buf << "RegionExpWithAdjacency";
         return buf.str();
@@ -340,7 +340,7 @@ public:
         return "gold";
     }
 
-    static std::map<int, ConvexPolytope<Coord<2> > > genGrid(int numCells)
+    static std::map<int, ConvexPolytope<FloatCoord<2> > > genGrid(int numCells)
     {
         int elementsPerChunk = 5;
         int numChunks = numCells / elementsPerChunk;
@@ -358,26 +358,40 @@ public:
             }
         }
 
-        std::map<int, ConvexPolytope<Coord<2> > > cells;
+        std::map<int, ConvexPolytope<FloatCoord<2> > > cells;
+        Coord<2> relativeCoords[] = {
+            Coord<2>( 0,  0),
+            Coord<2>(-1,  0),
+            Coord<2>( 1,  0),
+            Coord<2>( 0, -1),
+            Coord<2>( 0,  1),
+            Coord<2>(-1, -1),
+            Coord<2>( 1, -1),
+            Coord<2>(-1,  1),
+            Coord<2>( 1,  1)
+        };
+
         for (int y = 0; y < gridSize.y(); ++y) {
             for (int x = 0; x < gridSize.x(); ++x) {
                 Coord<2> gridIndex(x, y);
                 const std::map<int, Coord<2> >& chunk = grid[gridIndex];
 
                 for (std::map<int, Coord<2> >::const_iterator i = chunk.begin(); i != chunk.end(); ++i) {
-                    ConvexPolytope<Coord<2> > element(i->second, globalDim);
+                    ConvexPolytope<FloatCoord<2> > element(i->second, globalDim);
 
-                    for (int y = -1; y < 2; ++y) {
-                        for (int x = -1; x < 2; ++x) {
-                            Coord<2> currentIndex = gridIndex + Coord<2>(x, y);
-                            const std::map<int, Coord<2> >& neighbors = grid[currentIndex];
-                            for (std::map<int, Coord<2> >::const_iterator j = neighbors.begin();
-                                 j != neighbors.end();
-                                 ++j) {
-                                if (j->second != i->second) {
-                                    element << std::make_pair(j->second, j->first);
-                                }
+                    for (int c = 0; c < 9; ++c) {
+                        Coord<2> currentIndex = gridIndex + relativeCoords[c];
+                        const std::map<int, Coord<2> >& neighbors = grid[currentIndex];
+                        for (std::map<int, Coord<2> >::const_iterator j = neighbors.begin(); j != neighbors.end(); ++j) {
+                            if (j->second == i->second) {
+                                continue;
                             }
+
+                            element << std::make_pair(j->second, j->first);
+                        }
+
+                        if (c == 0) {
+                            element.updateGeometryData(true);
                         }
                     }
 
@@ -398,21 +412,19 @@ public:
         int expansionWidth = dim[2];
         int idStreakLength = dim[3];
 
-        std::map<int, ConvexPolytope<Coord<2> > > cells = mapIDs(rawCells, idStreakLength);
+        std::map<int, ConvexPolytope<FloatCoord<2> > > cells = mapIDs(rawCells, idStreakLength);
 
         // II. Extract Adjacency List from Cells
         RegionBasedAdjacency adjacency;
 
-        for (std::map<int, ConvexPolytope<Coord<2> > >::iterator  i = cells.begin(); i != cells.end(); ++i) {
+        for (std::map<int, ConvexPolytope<FloatCoord<2> > >::iterator  i = cells.begin(); i != cells.end(); ++i) {
             int id = i->first;
-            const ConvexPolytope<Coord<2> > element = i->second;
+            const ConvexPolytope<FloatCoord<2> > element = i->second;
 
             addNeighbors(adjacency, id, element.getLimits());
         }
 
         // III. Fill Region
-        // fixme: I don't fully understand the code with skipCells below,
-        // this may very well be easier solved.
         typedef std::map<int, std::vector<int> > MapAdjacency;
 
         MapAdjacency mapAdjacency;
@@ -455,14 +467,14 @@ public:
     }
 
 private:
-    std::map<int, ConvexPolytope<Coord<2> > > rawCells;
+    std::map<int, ConvexPolytope<FloatCoord<2> > > rawCells;
 
-    static std::map<int, ConvexPolytope<Coord<2> > > mapIDs(
-        const std::map<int, ConvexPolytope<Coord<2> > >& rawCells, int idStreakLength)
+    static std::map<int, ConvexPolytope<FloatCoord<2> > > mapIDs(
+        const std::map<int, ConvexPolytope<FloatCoord<2> > >& rawCells, int idStreakLength)
     {
-        std::map<int, ConvexPolytope<Coord<2> > > ret;
-        for (std::map<int, ConvexPolytope<Coord<2> > >::const_iterator i = rawCells.begin(); i != rawCells.end(); ++i) {
-            ConvexPolytope<Coord<2> > element = i->second;
+        std::map<int, ConvexPolytope<FloatCoord<2> > > ret;
+        for (std::map<int, ConvexPolytope<FloatCoord<2> > >::const_iterator i = rawCells.begin(); i != rawCells.end(); ++i) {
+            ConvexPolytope<FloatCoord<2> > element = i->second;
             mapLimitIDs(&element.getLimits(), idStreakLength);
             ret[mapID(i->first, idStreakLength)] = element;
         }
@@ -2720,13 +2732,13 @@ public:
     template<typename HOOD_NEW, typename HOOD_OLD>
     static void updateLineX(HOOD_NEW& hoodNew, int indexEnd, HOOD_OLD& hoodOld, unsigned /* nanoStep */)
     {
-        for (int i = hoodOld.index(); i < indexEnd; ++i, ++hoodOld) {
+        for (int i = hoodOld.index(); i < indexEnd / C; ++i, ++hoodOld) {
             ShortVec tmp;
             tmp.load_aligned(&hoodNew->sum() + i * C);
             for (const auto& j: hoodOld.weights(0)) {
                 ShortVec weights, values;
-                weights.load_aligned(j.second);
-                values.gather(&hoodOld->value(), j.first);
+                weights.load_aligned(j.second());
+                values.gather(&hoodOld->value(), j.first());
                 tmp += values * weights;
             }
             tmp.store_aligned(&hoodNew->sum() + i * C);
@@ -2781,11 +2793,11 @@ public:
     static void updateLineX(HOOD_NEW& hoodNew, int indexEnd, HOOD_OLD& hoodOld, unsigned /* nanoStep */)
     {
         REAL tmp, weights, values;
-        for (int i = hoodOld.index(); i < indexEnd; ++i, ++hoodOld) {
+        for (int i = hoodOld.index(); i < (indexEnd / C); ++i, ++hoodOld) {
             tmp = &hoodNew->sum() + i * C;
             for (const auto& j: hoodOld.weights(0)) {
-                weights = j.second;
-                values.gather(&hoodOld->value(), j.first);
+                weights = j.second();
+                values.gather(&hoodOld->value(), j.first());
                 tmp += values * weights;
             }
             (&hoodNew->sum() + i * C) << tmp;
@@ -2988,7 +3000,7 @@ public:
         Coord<3> dim(rawDim[0], rawDim[1], rawDim[2]);
         // 1. create grids
         typedef UnstructuredSoAGrid<SPMVMSoACell, MATRICES, ValueType, C, SIGMA> Grid;
-        const Coord<1> size(dim.x());
+        const CoordBox<1> size(Coord<1>(0), Coord<1>(dim.x()));
         Grid gridOld(size);
         Grid gridNew(size);
 
@@ -3000,7 +3012,7 @@ public:
         // 3. call updateFunctor()
         double seconds = 0;
         Region<1> region;
-        region << Streak<1>(Coord<1>(0), size.x());
+        region << Streak<1>(Coord<1>(0), size.dimensions.x());
         {
             ScopedTimer t(&seconds);
             updateFunctor<SPMVMSoACell, Grid>(region, gridOld, &gridNew, 0);
@@ -3011,7 +3023,7 @@ public:
                       << "optimizing away the loops above\n";
         }
 
-        const double numOps = 2. * (size.x() / 100) * (size.x());
+        const double numOps = 2. * (size.dimensions.x() / 100) * (size.dimensions.x());
         const double gflops = 1.0e-9 * numOps / seconds;
         return gflops;
     }
@@ -3054,7 +3066,7 @@ public:
         Coord<3> dim(rawDim[0], rawDim[1], rawDim[2]);
         // 1. create grids
         typedef UnstructuredSoAGrid<SPMVMSoACellInf, MATRICES, ValueType, C, SIGMA> Grid;
-        const Coord<1> size(dim.x());
+        const CoordBox<1> size(Coord<1>(0), Coord<1>(dim.x()));
         Grid gridOld(size);
         Grid gridNew(size);
 
@@ -3066,7 +3078,7 @@ public:
         // 3. call updateFunctor()
         double seconds = 0;
         Region<1> region;
-        region << Streak<1>(Coord<1>(0), size.x());
+        region << Streak<1>(Coord<1>(0), size.dimensions.x());
         {
             ScopedTimer t(&seconds);
             updateFunctor<SPMVMSoACellInf, Grid>(region, gridOld, &gridNew, 0);
@@ -3077,7 +3089,7 @@ public:
                       << "optimizing away the loops above\n";
         }
 
-        const double numOps = 2. * (size.x() / 100) * (size.x());
+        const double numOps = 2. * (size.dimensions.x() / 100) * (size.dimensions.x());
         const double gflops = 1.0e-9 * numOps / seconds;
         return gflops;
     }
@@ -3133,7 +3145,7 @@ public:
         // 1. create grids
         typedef UnstructuredSoAGrid<SPMVMSoACell, MATRICES, ValueType, C, SIGMA> Grid;
         typedef SellCSigmaSparseMatrixContainer<ValueType, C, SIGMA> Matrix;
-        const Coord<1> size(dim.x());
+        const CoordBox<1> size(Coord<1>(0), Coord<1>(dim.x()));
         Grid gridOld(size);
         Grid gridNew(size);
 
@@ -3151,7 +3163,7 @@ public:
         ValueType *rhsPtr; // = hoodOld.valuePtr;
         ValueType *resPtr; // = hoodNew.sumPtr;
         gridOld.callback(&gridNew, GetPointer<SPMVMSoACell, ValueType>(&resPtr, &rhsPtr));
-        const int rowsPadded = ((size.x() - 1) / C + 1) * C;
+        const int rowsPadded = ((size.dimensions.x() - 1) / C + 1) * C;
         double seconds = 0;
         {
             ScopedTimer t(&seconds);
@@ -3179,7 +3191,7 @@ public:
                       << "optimizing away the loops above\n";
         }
 
-        const double numOps = 2. * (size.x() / 100) * (size.x());
+        const double numOps = 2. * (size.dimensions.x() / 100) * (size.dimensions.x());
         const double gflops = 1.0e-9 * numOps / seconds;
         return gflops;
     }
@@ -3283,28 +3295,18 @@ int main(int argc, char **argv)
     eval(RegionExpand(5), toVector(Coord<3>( 512,  512,  512)));
     eval(RegionExpand(5), toVector(Coord<3>(2048, 2048, 2048)));
 
-    std::vector<int> params(4);
-    int numCells;
     {
-        numCells = 500000;
-        std::map<int, ConvexPolytope<Coord<2> > > cells;
-        if (std::string("RegionExpWithAdjacency").find(name) != std::string::npos) {
-            cells = RegionExpandWithAdjacency::genGrid(numCells);
-        }
+        std::vector<int> params(4);
+        int numCells = 2000000;
+        std::map<int, ConvexPolytope<FloatCoord<2> > > cells = RegionExpandWithAdjacency::genGrid(numCells);
         params[0] = numCells;
-        params[1] = numCells; // skip cells
+        params[1] = 0; // skip cells
         params[2] = 1; // expansion width
         params[3] = -1; // id streak lenght
         eval(RegionExpandWithAdjacency(cells), params);
-        params[1] = 50000; // skip cells
+        params[1] = 5000; // skip cells
         params[3] = 500; // id streak lenght
         eval(RegionExpandWithAdjacency(cells), params);
-    }
-
-    {
-        numCells = 50000;
-        params[0] = numCells;
-        std::map<int, ConvexPolytope<Coord<2> > > cells = RegionExpandWithAdjacency::genGrid(numCells);
 
         params[1] = 100;
         params[2] = 50;

@@ -10,8 +10,7 @@
 #include <libgeodecomp/geometry/partitions/unstructuredstripingpartition.h>
 #include <libgeodecomp/geometry/partitions/distributedptscotchunstructuredpartition.h>
 #include <libgeodecomp/loadbalancer/loadbalancer.h>
-#include <libgeodecomp/parallelization/distributedsimulator.h>
-#include <libgeodecomp/parallelization/nesting/eventpoint.h>
+#include <libgeodecomp/parallelization/hierarchicalsimulator.h>
 #include <libgeodecomp/parallelization/nesting/parallelwriteradapter.h>
 #include <libgeodecomp/parallelization/nesting/steereradapter.h>
 #include <libgeodecomp/parallelization/nesting/mpiupdategroup.h>
@@ -20,89 +19,6 @@
 #include <boost/make_shared.hpp>
 
 namespace LibGeoDecomp {
-namespace HiParSimulatorHelpers {
-
-// fixme: can we eliminate these classes?
-template<typename PARTITION_TYPE>
-class PartitionBuilder
-{
-public:
-    template<int DIM>
-    boost::shared_ptr<PARTITION_TYPE> operator()(
-        const CoordBox<DIM>& box,
-        const std::vector<std::size_t>& weights,
-        boost::shared_ptr<Adjacency> /* unused*/)
-    {
-        return boost::make_shared<PARTITION_TYPE>(
-            box.origin,
-            box.dimensions,
-            0,
-            weights);
-    }
-};
-
-// fixme: can we eliminate these classes?
-template<>
-class PartitionBuilder<UnstructuredStripingPartition>
-{
-public:
-    boost::shared_ptr<UnstructuredStripingPartition> operator()(
-        const CoordBox<1>& box,
-        const std::vector<std::size_t>& weights,
-        boost::shared_ptr<Adjacency> /* unused */)
-    {
-        return boost::make_shared<UnstructuredStripingPartition>(
-            box.origin,
-            box.dimensions,
-            0,
-            weights);
-    }
-};
-
-#ifdef LIBGEODECOMP_WITH_CPP14
-#ifdef LIBGEODECOMP_WITH_SCOTCH
-
-// fixme: can we eliminate these classes?
-template<int DIM>
-class PartitionBuilder<PTScotchUnstructuredPartition<DIM> >
-{
-public:
-    boost::shared_ptr<PTScotchUnstructuredPartition<DIM >> operator()(
-        const CoordBox<DIM>& box,
-        const std::vector<std::size_t>& weights,
-        boost::shared_ptr<Adjacency> adjacency)
-    {
-        return boost::make_shared<PTScotchUnstructuredPartition<DIM> >(
-            box.origin,
-            box.dimensions,
-            0,
-            weights,
-            adjacency);
-    }
-};
-
-template<int DIM>
-class PartitionBuilder<DistributedPTScotchUnstructuredPartition<DIM> >
-{
-public:
-    boost::shared_ptr<DistributedPTScotchUnstructuredPartition<DIM >> operator()(
-        const CoordBox<DIM>& box,
-        const std::vector<std::size_t>& weights,
-        boost::shared_ptr<Adjacency> adjacency)
-    {
-        return boost::make_shared<DistributedPTScotchUnstructuredPartition<DIM> >(
-            box.origin,
-            box.dimensions,
-            0,
-            weights,
-            adjacency);
-    }
-};
-
-#endif
-#endif // LIBGEODECOMP_WITH_CPP14
-
-}
 
 /**
  * The HiParSimulator implements our hierarchical parallelization
@@ -115,15 +31,25 @@ public:
  *
  * fixme: check if code runs with a communicator which is merely a subset of MPI_COMM_WORLD
  */
-template<typename CELL_TYPE, typename PARTITION, typename STEPPER = VanillaStepper<CELL_TYPE, UpdateFunctorHelpers::ConcurrencyEnableOpenMP> >
-class HiParSimulator : public DistributedSimulator<CELL_TYPE>
+template<
+    typename CELL_TYPE,
+    typename PARTITION,
+    typename STEPPER = VanillaStepper<CELL_TYPE, UpdateFunctorHelpers::ConcurrencyEnableOpenMP> >
+class HiParSimulator : public HierarchicalSimulator<CELL_TYPE>
 {
 public:
     friend class HiParSimulatorTest;
     using DistributedSimulator<CELL_TYPE>::NANO_STEPS;
     using DistributedSimulator<CELL_TYPE>::chronometer;
+    using HierarchicalSimulator<CELL_TYPE>::handleEvents;
+    using HierarchicalSimulator<CELL_TYPE>::initialWeights;
+    using HierarchicalSimulator<CELL_TYPE>::events;
+    using HierarchicalSimulator<CELL_TYPE>::initEvents;
+    using HierarchicalSimulator<CELL_TYPE>::timeToLastEvent;
+    using HierarchicalSimulator<CELL_TYPE>::timeToNextEvent;
+
     typedef typename DistributedSimulator<CELL_TYPE>::Topology Topology;
-    typedef DistributedSimulator<CELL_TYPE> ParentType;
+    typedef HierarchicalSimulator<CELL_TYPE> ParentType;
     typedef MPIUpdateGroup<CELL_TYPE> UpdateGroupType;
     typedef typename ParentType::GridType GridType;
     typedef ParallelWriterAdapter<typename UpdateGroupType::GridType, CELL_TYPE> ParallelWriterAdapterType;
@@ -137,9 +63,8 @@ public:
         unsigned loadBalancingPeriod = 1,
         unsigned ghostZoneWidth = 1,
         MPI_Comm communicator = MPI_COMM_WORLD) :
-        ParentType(initializer),
+        ParentType(initializer, loadBalancingPeriod * NANO_STEPS),
         balancer(balancer),
-        loadBalancingPeriod(loadBalancingPeriod * NANO_STEPS),
         ghostZoneWidth(ghostZoneWidth),
         mpiLayer(communicator)
     {}
@@ -226,9 +151,7 @@ private:
     using DistributedSimulator<CELL_TYPE>::writers;
 
     boost::shared_ptr<LoadBalancer> balancer;
-    unsigned loadBalancingPeriod;
     unsigned ghostZoneWidth;
-    EventMap events;
     MPILayer mpiLayer;
     boost::shared_ptr<UpdateGroupType> updateGroup;
 
@@ -236,33 +159,6 @@ private:
     typename UpdateGroupType::PatchProviderVec steererAdaptersInner;
     typename UpdateGroupType::PatchAccepterVec writerAdaptersGhost;
     typename UpdateGroupType::PatchAccepterVec writerAdaptersInner;
-
-    /**
-     * computes an initial weight distribution of the work items (i.e.
-     * number of cells in the simulation space). rankSpeeds gives an
-     * estimate of the relative performance of the different ranks
-     * (good when running on heterogeneous systems, e.g. clusters
-     * comprised of multiple genrations of nodes or x86 clusters with
-     * additional Xeon Phi accelerators).
-     */
-    std::vector<std::size_t> initialWeights(std::size_t items, const std::vector<double>& rankSpeeds) const
-    {
-        std::size_t size = rankSpeeds.size();
-        double totalSum = sum(rankSpeeds);
-        std::vector<std::size_t> ret(size);
-
-        std::size_t lastPos = 0;
-        double partialSum = 0.0;
-        for (std::size_t i = 0; i < size - 1; ++i) {
-            partialSum += rankSpeeds[i];
-            std::size_t nextPos = items * partialSum / totalSum;
-            ret[i] = nextPos - lastPos;
-            lastPos = nextPos;
-        }
-        ret[size - 1] = items - lastPos;
-
-        return ret;
-    }
 
     inline void nanoStep(long s)
     {
@@ -299,11 +195,13 @@ private:
             box.dimensions.prod(),
             rankSpeeds);
 
-        boost::shared_ptr<PARTITION> partition =
-            HiParSimulatorHelpers::PartitionBuilder<PARTITION>()(
-               box,
-               weights,
-               initializer->getAdjacency());
+        boost::shared_ptr<PARTITION> partition(
+            new PARTITION(
+                box.origin,
+                box.dimensions,
+                0,
+                weights,
+                initializer->getAdjacency()));
 
         updateGroup.reset(
             new UpdateGroupType(
@@ -326,61 +224,10 @@ private:
         initEvents();
     }
 
-    inline void initEvents()
-    {
-        events.clear();
-        long lastNanoStep = initializer->maxSteps() * NANO_STEPS;
-        events[lastNanoStep] << END;
-
-        insertNextLoadBalancingEvent();
-    }
-
-    inline void handleEvents()
-    {
-        if (currentNanoStep() > events.begin()->first) {
-            throw std::logic_error("stale event found, should have been handled previously");
-        }
-        if (currentNanoStep() < events.begin()->first) {
-            // don't need to handle future events now
-            return;
-        }
-
-        const EventSet& curEvents = events.begin()->second;
-        for (EventSet::const_iterator i = curEvents.begin(); i != curEvents.end(); ++i) {
-            if (*i == LOAD_BALANCING) {
-                balanceLoad();
-                insertNextLoadBalancingEvent();
-            }
-        }
-        events.erase(events.begin());
-    }
-
-    inline void insertNextLoadBalancingEvent()
-    {
-        long nextLoadBalancing = currentNanoStep() + loadBalancingPeriod;
-        events[nextLoadBalancing] << LOAD_BALANCING;
-    }
-
     inline long currentNanoStep() const
     {
         std::pair<int, int> now = updateGroup->currentStep();
         return (long)now.first * NANO_STEPS + now.second;
-    }
-
-    /**
-     * returns the number of nano steps until the next event needs to be handled.
-     */
-    inline long timeToNextEvent() const
-    {
-        return events.begin()->first - currentNanoStep();
-    }
-
-    /**
-     * returns the number of nano steps until simulation end.
-     */
-    inline long timeToLastEvent() const
-    {
-        return  events.rbegin()->first - currentNanoStep();
     }
 
     inline void balanceLoad()
