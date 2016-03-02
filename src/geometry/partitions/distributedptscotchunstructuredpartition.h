@@ -122,10 +122,31 @@ private:
     void buildRegions()
     {
         std::vector<SCOTCH_Num> indices(localCells);
+
+#ifdef PROFILE_PTSCOTCH
+        double time = 0.0;
+
+        {
+            ScopedTimer timer(&time);
+            initIndices(indices);
+        }
+
+        std::cout << "Partitioning: " << time << std::endl;
+        time = 0.0;
+
+        {
+            ScopedTimer timer(&time);
+            regions.resize(numPartitions);
+            createRegions(indices);
+        }
+
+        std::cout << "AllGather: " << time << std::endl;
+#else
         initIndices(indices);
 
         regions.resize(numPartitions);
         createRegions(indices);
+#endif // PROFILE_PTSCOTCH
     }
 
     void initIndices(std::vector<SCOTCH_Num>& indices)
