@@ -884,6 +884,7 @@ public:
     void testDelete()
     {
         Region<2>::IndexVectorType expected;
+
         expected << IntPair(0, 10)  // 0
                                     // 1
                  << IntPair(0, 10)  // 2
@@ -913,7 +914,9 @@ public:
 
     void testAndNot1()
     {
-        Region<2> minuend, expected;
+        Region<2> minuend;
+        Region<2> expected;
+
         for(int x = 0; x < 10; ++x) {
             for(int y = 0; y < 10; ++y) {
                 c << Coord<2>(x, y);
@@ -944,6 +947,7 @@ public:
     void testAndNot2()
     {
         Region<2> expanded, expected;
+
         for(int x = 0; x < 10; ++x) {
             for(int y = 0; y < 10; ++y) {
                 c << Coord<2>(x, y);
@@ -964,7 +968,10 @@ public:
 
     void testAndAssignmentOperator()
     {
-        Region<2> original, mask, expected;
+        Region<2> original;
+        Region<2> mask;
+        Region<2> expected;
+
         for(int x = 0; x < 10; ++x) {
             for(int y = 0; y < 10; ++y) {
                 original << Coord<2>(x, y);
@@ -1013,7 +1020,10 @@ public:
 
     void testAddAssignmentOperator()
     {
-        Region<2> original, addent, expected;
+        Region<2> original;
+        Region<2> addend;
+        Region<2> expected;
+
         for(int x = 0; x < 10; ++x) {
             for(int y = 0; y < 10; ++y) {
                 original << Coord<2>(x, y);
@@ -1022,7 +1032,7 @@ public:
 
         for(int x = 3; x < 15; ++x) {
             for(int y = 0; y < 10; ++y) {
-                addent << Coord<2>(x, y);
+                addend << Coord<2>(x, y);
             }
         }
 
@@ -1032,13 +1042,16 @@ public:
             }
         }
 
-        original += addent;
+        original += addend;
         TS_ASSERT_EQUALS(original, expected);
     }
 
     void testAddOperator()
     {
-        Region<2> original, addent, expected;
+        Region<2> original;
+        Region<2> addend;
+        Region<2> expected;
+
         for(int x = 0; x < 10; ++x) {
             for(int y = 0; y < 10; ++y) {
                 original << Coord<2>(x, y);
@@ -1047,7 +1060,7 @@ public:
 
         for(int x = 3; x < 15; ++x) {
             for(int y = 0; y < 10; ++y) {
-                addent << Coord<2>(x, y);
+                addend << Coord<2>(x, y);
             }
         }
 
@@ -1057,7 +1070,20 @@ public:
             }
         }
 
-        TS_ASSERT_EQUALS(original + addent, expected);
+        TS_ASSERT_EQUALS(original + addend, expected);
+    }
+
+    void testAddOperator2()
+    {
+        Region<2> r1;
+        Region<2> r2;
+        Region<2> r3;
+
+        r1 << CoordBox<2>(Coord<2>(10, 10), Coord<2>(30, 15));
+        r2 << CoordBox<2>(Coord<2>(10, 25), Coord<2>(30, 40));
+        r3 << CoordBox<2>(Coord<2>(10, 10), Coord<2>(30, 55));
+
+        TS_ASSERT_EQUALS(r1 + r2, r3);
     }
 
     void testEqualsOperator()
@@ -2051,6 +2077,122 @@ public:
         for (Region<3>::Iterator i = region.begin(); i != region.end(); ++i) {
             TS_ASSERT_EQUALS(grid[*i], float(47.11));
         }
+    }
+
+    void testIsAppendable1D()
+    {
+        Region<1> r1;
+        Region<1> r2;
+        Region<1> r3;
+        Region<1> r4;
+        r1 << Streak<1>(Coord<1>( 5), 10);
+        r2 << Streak<1>(Coord<1>( 6), 10);
+        r3 << Streak<1>(Coord<1>(10), 15);
+
+        TS_ASSERT(!r1.isAppendable(r2));
+        TS_ASSERT( r1.isAppendable(r3));
+        TS_ASSERT( r1.isAppendable(r4));
+
+        TS_ASSERT(!r2.isAppendable(r1));
+        TS_ASSERT( r2.isAppendable(r3));
+        TS_ASSERT( r2.isAppendable(r4));
+
+        TS_ASSERT(!r3.isAppendable(r1));
+        TS_ASSERT(!r3.isAppendable(r2));
+        TS_ASSERT( r3.isAppendable(r4));
+
+        TS_ASSERT( r4.isAppendable(r1));
+        TS_ASSERT( r4.isAppendable(r2));
+        TS_ASSERT( r4.isAppendable(r3));
+    }
+
+    void testIsAppendable2D()
+    {
+        Region<2> r1;
+        Region<2> r2;
+        Region<2> r3;
+        Region<2> r4;
+        Region<2> r5;
+        r1 << Streak<2>(Coord<2>( 5, 7), 10);
+        r2 << Streak<2>(Coord<2>( 6, 7), 10);
+        r3 << Streak<2>(Coord<2>(10, 7), 15);
+        r4 << Streak<2>(Coord<2>(10, 8), 15);
+
+        TS_ASSERT(!r1.isAppendable(r2));
+        TS_ASSERT( r1.isAppendable(r3));
+        TS_ASSERT( r1.isAppendable(r4));
+        TS_ASSERT( r1.isAppendable(r5));
+
+        TS_ASSERT(!r2.isAppendable(r1));
+        TS_ASSERT( r2.isAppendable(r3));
+        TS_ASSERT( r2.isAppendable(r4));
+        TS_ASSERT( r2.isAppendable(r5));
+
+        TS_ASSERT(!r3.isAppendable(r1));
+        TS_ASSERT(!r3.isAppendable(r2));
+        TS_ASSERT( r3.isAppendable(r4));
+        TS_ASSERT( r3.isAppendable(r5));
+
+        TS_ASSERT(!r4.isAppendable(r1));
+        TS_ASSERT(!r4.isAppendable(r2));
+        TS_ASSERT(!r4.isAppendable(r3));
+        TS_ASSERT( r4.isAppendable(r5));
+
+        TS_ASSERT( r5.isAppendable(r1));
+        TS_ASSERT( r5.isAppendable(r2));
+        TS_ASSERT( r5.isAppendable(r3));
+        TS_ASSERT( r5.isAppendable(r4));
+    }
+
+    void testIsAppendable3D()
+    {
+        Region<3> r1;
+        Region<3> r2;
+        Region<3> r3;
+        Region<3> r4;
+        Region<3> r5;
+        Region<3> r6;
+        r1 << Streak<3>(Coord<3>( 5, 7, 6), 10);
+        r2 << Streak<3>(Coord<3>( 6, 7, 6), 10);
+        r3 << Streak<3>(Coord<3>(10, 7, 6), 15);
+        r4 << Streak<3>(Coord<3>(10, 8, 6), 15);
+        r5 << Streak<3>(Coord<3>(10, 8, 7), 15);
+
+        TS_ASSERT(!r1.isAppendable(r2));
+        TS_ASSERT( r1.isAppendable(r3));
+        TS_ASSERT( r1.isAppendable(r4));
+        TS_ASSERT( r1.isAppendable(r5));
+        TS_ASSERT( r1.isAppendable(r6));
+
+        TS_ASSERT(!r2.isAppendable(r1));
+        TS_ASSERT( r2.isAppendable(r3));
+        TS_ASSERT( r2.isAppendable(r4));
+        TS_ASSERT( r2.isAppendable(r5));
+        TS_ASSERT( r2.isAppendable(r6));
+
+        TS_ASSERT(!r3.isAppendable(r1));
+        TS_ASSERT(!r3.isAppendable(r2));
+        TS_ASSERT( r3.isAppendable(r4));
+        TS_ASSERT( r3.isAppendable(r5));
+        TS_ASSERT( r3.isAppendable(r6));
+
+        TS_ASSERT(!r4.isAppendable(r1));
+        TS_ASSERT(!r4.isAppendable(r2));
+        TS_ASSERT(!r4.isAppendable(r3));
+        TS_ASSERT( r4.isAppendable(r5));
+        TS_ASSERT( r4.isAppendable(r6));
+
+        TS_ASSERT(!r5.isAppendable(r1));
+        TS_ASSERT(!r5.isAppendable(r2));
+        TS_ASSERT(!r5.isAppendable(r3));
+        TS_ASSERT(!r5.isAppendable(r4));
+        TS_ASSERT( r5.isAppendable(r6));
+
+        TS_ASSERT( r6.isAppendable(r1));
+        TS_ASSERT( r6.isAppendable(r2));
+        TS_ASSERT( r6.isAppendable(r3));
+        TS_ASSERT( r6.isAppendable(r4));
+        TS_ASSERT( r6.isAppendable(r5));
     }
 
 private:

@@ -270,6 +270,64 @@ public:
     }
 };
 
+class RegionAppend : public CPUBenchmark
+{
+public:
+    std::string family()
+    {
+        return "RegionAppend";
+    }
+
+    std::string species()
+    {
+        return "gold";
+    }
+
+    double performance(std::vector<int> rawDim)
+    {
+        Coord<3> dim(rawDim[0], rawDim[1], rawDim[2]);
+        double seconds = 0;
+        {
+            Region<3> r1;
+            Region<3> r2;
+
+            for (int z = 0; z < dim.z(); ++z) {
+                for (int y = 0; y < dim.y(); ++y) {
+                    r1 << Streak<3>(Coord<3>(0, y, z), dim.x());
+                }
+            }
+
+            for (int z = dim.z(); z < (2 * dim.z()); ++z) {
+                for (int y = 0; y < dim.y(); ++y) {
+                    r2 << Streak<3>(Coord<3>(0, y, z), dim.x());
+                }
+            }
+
+            Region<3> akku1 = r1;
+            Region<3> akku2 = r2;
+            int sum = 0;
+
+            {
+                ScopedTimer t(&seconds);
+                akku1 += r2;
+                akku2 += r1;
+
+                sum += akku1.size();
+                sum += akku2.size();
+                sum += (r1 + r2).size();
+                sum += (r2 + r1).size();
+            }
+        }
+
+        return seconds;
+    }
+
+    std::string unit()
+    {
+        return "s";
+    }
+};
+
 class RegionExpand : public CPUBenchmark
 {
 public:
@@ -416,26 +474,22 @@ public:
 
         // II. Extract Adjacency List from Cells
         RegionBasedAdjacency adjacency;
+        std::vector<int> ids;
 
         for (std::map<int, ConvexPolytope<FloatCoord<2> > >::iterator  i = cells.begin(); i != cells.end(); ++i) {
             int id = i->first;
             const ConvexPolytope<FloatCoord<2> > element = i->second;
 
+            ids << id;
             addNeighbors(adjacency, id, element.getLimits());
         }
 
         // III. Fill Region
-        typedef std::map<int, std::vector<int> > MapAdjacency;
-
-        MapAdjacency mapAdjacency;
-        for (Region<2>::Iterator it = adjacency.getRegion().begin(); it != adjacency.getRegion().end(); ++it) {
-            mapAdjacency[it->x()].push_back(it->y());
-        }
-
+        std::sort(ids.begin(), ids.end());
         Region<1> r;
         int counter = 0;
         bool select = true;
-        for (MapAdjacency::iterator i = mapAdjacency.begin(); i != mapAdjacency.end(); ++i) {
+        for (std::vector<int>::iterator i = ids.begin(); i != ids.end(); ++i) {
             ++counter;
             if (counter >= skipCells) {
                 counter = 0;
@@ -443,7 +497,7 @@ public:
             }
 
             if (select) {
-                r << Coord<1>(i->first);
+                r << Coord<1>(*i);
             }
         }
 
@@ -3286,6 +3340,10 @@ int main(int argc, char **argv)
     eval(RegionUnion(), toVector(Coord<3>( 128,  128,  128)));
     eval(RegionUnion(), toVector(Coord<3>( 512,  512,  512)));
     eval(RegionUnion(), toVector(Coord<3>(2048, 2048, 2048)));
+
+    eval(RegionAppend(), toVector(Coord<3>( 128,  128,  128)));
+    eval(RegionAppend(), toVector(Coord<3>( 512,  512,  512)));
+    eval(RegionAppend(), toVector(Coord<3>(2048, 2048, 2048)));
 
     eval(RegionExpand(1), toVector(Coord<3>( 128,  128,  128)));
     eval(RegionExpand(1), toVector(Coord<3>( 512,  512,  512)));
